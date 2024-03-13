@@ -1,5 +1,5 @@
 // canister code goes here
-import { query, update, text, Record, StableBTreeMap, Variant, Vec, None, Some, Ok, Err, ic, Principal, Opt, nat64, Duration, Result, bool, Canister } from "azle";
+import { query, update, text, Record, StableBTreeMap, Variant, Vec, None, Some, Ok, Err, ic, Principal, Opt, nat64, Duration, Result, bool, Canister, init } from "azle";
 import {
     Ledger, binaryAddressFromAddress, binaryAddressFromPrincipal, hexAddressFromPrincipal
 } from "azle/canisters/ledger";
@@ -13,22 +13,35 @@ import { v4 as uuidv4 } from "uuid";
  */
 const Product = Record({
     id: text,
-    title: text,
-    description: text,
+    model_code: text,
+    name: text,
+    year : text,
     location: text,
+    streering: text,
+    fuel: text,
     price: nat64,
     seller: Principal,
-    attachmentURL: text,
-    soldAmount: nat64
+    engine_size: text,
+    mileage: nat64,
+    weight: nat64,
+    color: text,
+    photoURL: text,
+    soldAmount: nat64,
+    crsrvedto: Opt(Principal),
+    is_reserved: bool
 });
 
 const ProductPayload = Record({
-    title: text,
-    description: text,
+    name: text,
     location: text,
     price: nat64,
-    attachmentURL: text
+    photoURL: text,
+
 });
+
+const InitPayload = Record({
+    auctionFee: nat64,
+  });
 
 const OrderStatus = Variant({
     PaymentPending: text,
@@ -45,6 +58,8 @@ const Order = Record({
 });
 
 const Message = Variant({
+    Reserved: text,
+    NotReserved: text,
     NotFound: text,
     InvalidPayload: text,
     PaymentFailed: text,
@@ -72,7 +87,10 @@ const productsStorage = StableBTreeMap(0, text, Product);
 const persistedOrders = StableBTreeMap(1, Principal, Order);
 const pendingOrders = StableBTreeMap(2, nat64, Order);
 
-const ORDER_RESERVATION_PERIOD = 120n; // reservation period in seconds
+// fee to be charged to participate in auction and is  non-refundable
+let auctionFee: Opt<nat64> = None;
+
+const ORDER_RESERVATION_PERIOD = 300n; // reservation period in seconds
 
 /* 
     initialization of the Ledger canister. The principal text value is hardcoded because 
@@ -81,6 +99,11 @@ const ORDER_RESERVATION_PERIOD = 120n; // reservation period in seconds
 const icpCanister = Ledger(Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai"));
 
 export default Canister({
+     // set an auction fee
+    initData: init([InitPayload], (payload: { auctionFee: any; }) => {
+    auctionFee = Some(payload.auctionFee);
+    }),
+
     getProducts: query([], Vec(Product), () => {
         return productsStorage.values();
     }),
@@ -101,7 +124,11 @@ export default Canister({
         if (typeof payload !== "object" || Object.keys(payload).length === 0) {
             return Err({ NotFound: "invalid payoad" })
         }
-        const product = { id: uuidv4(), soldAmount: 0n, seller: ic.caller(), ...payload };
+        const product = { 
+                id: uuidv4(), 
+                soldAmount: 0n, 
+                seller: ic.caller(), 
+                ...payload };
         productsStorage.insert(product.id, product);
         return Ok(product);
     }),
